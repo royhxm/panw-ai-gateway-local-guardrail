@@ -2,13 +2,14 @@ import os, secrets, json, re, time
 import httpx
 from fastapi import FastAPI, Request, HTTPException, Depends
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse
 from pathlib import Path
 import audit
 import observation
 
 QWEN_URL = os.environ.get("QWEN_URL", "http://127.0.0.1:18081").rstrip("/")
 PRESIDIO_URL = os.environ.get("PRESIDIO_URL", "http://127.0.0.1:18082").rstrip("/")
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 app = FastAPI(
     title="PANW AI Gateway Local Guardrail",
     version=VERSION,
@@ -67,7 +68,13 @@ def extract(part):
         raise HTTPException(422, "invalid payload")
     obj = part.get("json")
     if isinstance(obj, dict):
-        return extract(obj)
+        try:
+            nested = extract(obj)
+            if nested.strip():
+                return nested
+        except HTTPException as exc:
+            if exc.detail != "no supported text found":
+                raise
     if isinstance(part.get("messages"), list):
         if any(not isinstance(message, dict) for message in part["messages"]):
             raise HTTPException(422, "messages must contain objects")
@@ -125,10 +132,16 @@ async def webhook(request: Request):
     obj = source.get("json", source) if isinstance(source, dict) else {}
     model = obj.get("model") if isinstance(obj, dict) else None
     metadata = body.get("metadata") if isinstance(body.get("metadata"), dict) else {}
+    identity = {
+        "gateway_trace_id": safe_id(request.headers.get("x-portkey-trace-id")),
+        "body_trace_id": safe_id(body.get("traceId")),
+        "application_trace_id": safe_id(metadata.get("trace_id")),
+        "session_id": safe_id(metadata.get("session_id")),
+    }
     trace = (
-        request.headers.get("x-portkey-trace-id")
-        or body.get("traceId")
-        or metadata.get("trace_id")
+        identity["gateway_trace_id"]
+        or identity["body_trace_id"]
+        or identity["application_trace_id"]
     )
     request.state.audit.update(
         event_type=event,
@@ -162,9 +175,15 @@ async def webhook(request: Request):
         "timing": {},
         "usage": {},
         "policy": "PII / Unsafe / Controversial => deny; Safe => allow",
-        "gateway_observed": False,
+        "gateway_observed": True,
+        "identity": identity,
     }
     request.state.audit["payload"] = payload
+    request.state.audit_body = body
+    if after and isinstance(body.get("response"), dict):
+        upstream_status = body["response"].get("statusCode")
+        if type(upstream_status) is int and upstream_status >= 400:
+            raise HTTPException(422, "upstream response was not successful")
     text = extract(body.get("response") if after else body.get("request", body))
     if not text.strip():
         raise HTTPException(422, "empty content")
@@ -326,3 +345,25 @@ async def webhook(request: Request):
             "eventType": event,
         },
     }
+
+
+@app.exception_handler(HTTPException)
+async def handled_error(request: Request, exc: HTTPException):
+    if hasattr(request.state, "audit"):
+        request.state.audit["detail"] = str(exc.detail)
+        payload = request.state.audit.setdefault("payload", {})
+        payload["error"] = {
+            "status": exc.status_code,
+            "reason": str(exc.detail),
+            "stage": (
+                "validation" if exc.status_code in (413, 422) else "dependency_or_auth"
+            ),
+        }
+        body = getattr(request.state, "audit_body", None)
+        if body is not None:
+            try:
+                async with httpx.AsyncClient(timeout=5) as client:
+                    payload["observation"] = await observation.snapshot(body, client)
+            except Exception:
+                payload["observation"] = {"capture_error": "脱敏采集不可用；未保存原文"}
+    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})

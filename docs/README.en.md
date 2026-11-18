@@ -13,7 +13,7 @@ remain on loopback. No firewall or gateway security policy is changed automatica
 ```bash
 git clone https://github.com/royhxm/panw-ai-gateway-local-guardrail.git
 cd panw-ai-gateway-local-guardrail
-git checkout v0.1.0
+git checkout v0.2.0
 python3 scripts/setup.py
 python3 scripts/download_model.py
 sudo chown -R 10001:10001 logs-data model-cache
@@ -67,4 +67,9 @@ the latest-turn summary does not represent the full scan scope.
 
 [Chinese full guide](../README.md) · [API](api.md) · [Operations](operations.md) ·
 [Limitations](limitations.md) · [Changelog](../CHANGELOG.md)
+
+
+## v0.2.0 output diagnostics
+
+See [output control and trace correlation](output-control.md) for details. Aurora continues to call PANW AI Gateway first. This release adds no application proxy; streaming buffering and business payload redaction require gateway-side support and are not implemented by this verdict-only webhook.
 

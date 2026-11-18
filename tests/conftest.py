@@ -64,7 +64,7 @@ def stack(tmp_path, monkeypatch):
         httpx,
         "AsyncClient",
         lambda **kwargs: real_client(
-            transport=httpx.MockTransport(downstream), **kwargs
+            transport=kwargs.pop("transport", httpx.MockTransport(downstream)), **kwargs
         ),
     )
     with TestClient(module.app) as client:

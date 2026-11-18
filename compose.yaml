@@ -1,6 +1,6 @@
 name: local-guardrail
 x-runtime: &runtime
-  image: ${GUARDRAIL_IMAGE:-local-guardrail:0.1.0}
+  image: ${GUARDRAIL_IMAGE:-local-guardrail:0.2.0}
   network_mode: host
   restart: unless-stopped
   cap_drop: [ALL]

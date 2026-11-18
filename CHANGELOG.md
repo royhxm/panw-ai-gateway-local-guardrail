@@ -2,6 +2,13 @@
 
 版本遵循 Semantic Versioning。这里记录项目能力，不包含私有部署的地址、Token、日志或业务数据。
 
+## [0.2.0] - 2026-11-18
+
+- Separate gateway/application Trace IDs, preserve session identity, avoid automatic pairing when retries create multiple candidates.
+- Capture masked validation failures with concrete reasons; fall back from empty JSON to text safely.
+- Add authenticated 24-hour scan/error/latency metrics and dashboard summary.
+- Add regression coverage for output parsing, trace ambiguity, error masking and metrics.
+
 ## [0.1.0] - 2026-11-18
 
 首个公开版本：**PANW AI Gateway Local Guardrail**。
@@ -37,3 +44,5 @@
 
 [0.1.0]: https://github.com/royhxm/panw-ai-gateway-local-guardrail/releases/tag/v0.1.0
 
+
+[0.2.0]: https://github.com/royhxm/panw-ai-gateway-local-guardrail/releases/tag/v0.2.0

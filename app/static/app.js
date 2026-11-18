@@ -114,7 +114,15 @@ function render() {
       );
     } else
       content.append(el("span", "message-info", "历史合并摘要 · 角色未采集"));
-    if (item.trace_id) content.append(el("span", "trace", item.trace_id));
+    if (item.trace_id)
+      content.append(el("span", "trace", "关联 Trace: " + item.trace_id));
+    if (
+      item.application_trace_id &&
+      item.application_trace_id !== item.trace_id
+    )
+      content.append(
+        el("span", "trace", "应用 Trace: " + item.application_trace_id),
+      );
     row.append(content);
     row.append(
       el("td", "model", item.model || "—"),
@@ -319,11 +327,15 @@ function renderDetail(data) {
     before =
       scan.event_type === "beforeRequestHook"
         ? scan
-        : related.find((r) => r.event_type === "beforeRequestHook"),
+        : data.correlation?.ambiguous
+          ? null
+          : related.find((r) => r.event_type === "beforeRequestHook"),
     after =
       scan.event_type === "afterRequestHook"
         ? scan
-        : related.find((r) => r.event_type === "afterRequestHook");
+        : data.correlation?.ambiguous
+          ? null
+          : related.find((r) => r.event_type === "afterRequestHook");
   const b = before?.payload?.observation || {},
     a = after?.payload?.observation || {},
     o = scan.payload?.observation || {},
@@ -337,10 +349,56 @@ function renderDetail(data) {
       scan.trace_id
         ? "TRACE " +
             scan.trace_id +
-            " · 同 Trace ID 关联；重试记录以选中阶段及最近另一阶段为准。"
+            " · 按相同 Trace 关联；会话内每次调用分别记录。"
         : "未提供 Trace ID · 此记录不能与其他阶段可靠关联。",
     ),
   );
+  const identity = scan.payload?.identity || {};
+  const ids = el("div", "detail-card");
+  detailRow(
+    ids,
+    "网关 Trace ID",
+    identity.gateway_trace_id || "未单独记录（历史数据不能确认来源）",
+  );
+  detailRow(
+    ids,
+    "应用 Trace ID",
+    identity.application_trace_id || o.metadata.trace_id,
+  );
+  detailRow(
+    ids,
+    "会话 ID（不用于配对）",
+    identity.session_id || o.metadata.session_id,
+  );
+  detailRow(
+    ids,
+    "输入 / 输出关联",
+    data.correlation?.ambiguous
+      ? "同 Trace 存在多个候选，未自动配对"
+      : data.correlation?.paired_scan_id
+        ? "已关联记录 #" + data.correlation.paired_scan_id
+        : "尚未找到另一阶段；可能尚未到达或未传 Trace",
+  );
+  detailRow(ids, "用于关联的 Trace ID", scan.trace_id);
+  if (related.length > 1) {
+    const links = el("div");
+    for (const record of related.filter((r) => r.id !== scan.id)) {
+      const button = el(
+        "button",
+        "quiet",
+        "#" +
+          record.id +
+          " · " +
+          (record.event_type === "afterRequestHook" ? "输出" : "输入") +
+          " · " +
+          dateParts(record.timestamp).join(" "),
+      );
+      button.onclick = () => details(record);
+      links.append(button);
+    }
+    ids.append(links);
+  }
+  root.append(ids);
   const nav = el("div", "detail-tabs");
   nav.setAttribute("role", "tablist");
   nav.setAttribute("aria-label", "日志详情视图");
@@ -774,6 +832,26 @@ async function load() {
     $("errors").textContent =
       (data.counts.error || 0) + (data.counts.rejected || 0);
     $("updated").textContent = dateParts(data.updated_at)[1];
+    fetch("/api/metrics")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((m) => {
+        if (m)
+          $("runtime-metrics").textContent =
+            "近 24 小时：" +
+            m.scans +
+            " 次阶段检查 · 内容阻断 " +
+            m.blocked +
+            " · 调用异常 " +
+            m.errors +
+            " · P50 " +
+            (m.latency_p50_ms ?? "—") +
+            " ms · P95 " +
+            (m.latency_p95_ms ?? "—") +
+            " ms";
+      })
+      .catch(() => {
+        $("runtime-metrics").textContent = "运行指标暂不可用";
+      });
     $("error").classList.add("hidden");
     $("connection").textContent = "日志已连接";
     render();

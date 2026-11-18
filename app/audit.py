@@ -72,14 +72,14 @@ def read_logs(limit, outcome, query, offset):
         args.append(outcome)
     if query:
         where.append(
-            "(summary LIKE ? ESCAPE '\\' OR trace_id LIKE ? ESCAPE '\\' OR model LIKE ? ESCAPE '\\' OR categories LIKE ? ESCAPE '\\')"
+            "(summary LIKE ? ESCAPE '\\' OR trace_id LIKE ? ESCAPE '\\' OR model LIKE ? ESCAPE '\\' OR categories LIKE ? ESCAPE '\\' OR json_extract(payload,'$.identity.application_trace_id') LIKE ? ESCAPE '\\' OR json_extract(payload,'$.observation.metadata.trace_id') LIKE ? ESCAPE '\\')"
         )
         term = (
             "%"
             + query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
             + "%"
         )
-        args.extend([term] * 4)
+        args.extend([term] * 6)
     clause = " WHERE " + " AND ".join(where)
     with connect() as conn:
         counts = {
@@ -99,6 +99,8 @@ def read_logs(limit, outcome, query, offset):
             json_extract(payload,'$.observation.stream') AS stream,
             json_extract(payload,'$.observation.request_type') AS request_type,
             COALESCE(json_extract(payload,'$.observation.metadata.feature'),json_extract(payload,'$.observation.snapshot.metadata.feature')) AS feature,
+            json_extract(payload,'$.identity.gateway_trace_id') AS gateway_trace_id,
+            COALESCE(json_extract(payload,'$.identity.application_trace_id'),json_extract(payload,'$.observation.metadata.trace_id')) AS application_trace_id,
             json_extract(payload,'$.version') AS log_version
             FROM scans"""
             + clause
@@ -144,7 +146,31 @@ def read_detail(scan_id):
         item["payload"] = json.loads(item["payload"])
         return item
 
-    return {"scan": decode(row), "related": [decode(value) for value in related]}
+    scan = decode(row)
+    records = [decode(value) for value in related]
+    opposite = (
+        "afterRequestHook"
+        if scan["event_type"] == "beforeRequestHook"
+        else "beforeRequestHook"
+    )
+    candidates = [r for r in records if r["event_type"] == opposite]
+    ambiguous = any(
+        sum(r["event_type"] == stage for r in records) > 1
+        for stage in ("beforeRequestHook", "afterRequestHook")
+    )
+    return {
+        "scan": scan,
+        "related": records,
+        "correlation": {
+            "key": "trace_id" if row["trace_id"] else None,
+            "candidate_count": len(candidates),
+            "ambiguous": ambiguous,
+            "paired_scan_id": (
+                candidates[0]["id"] if len(candidates) == 1 and not ambiguous else None
+            ),
+            "note": "仅按相同 Trace 关联，不按会话或时间猜测；多候选时不自动选择。",
+        },
+    }
 
 
 def signature(expiry):
@@ -266,6 +292,33 @@ def install(app):
             raise HTTPException(422, "invalid filter")
         return await asyncio.to_thread(read_logs, limit, outcome, q.strip(), offset)
 
+    @app.get("/api/metrics", dependencies=[Depends(logs_auth)])
+    async def runtime_metrics():
+        return await asyncio.to_thread(metrics)
+
     @app.get("/api/logs/{scan_id}", dependencies=[Depends(logs_auth)])
     async def log_detail(scan_id: int):
         return await asyncio.to_thread(read_detail, scan_id)
+
+
+def metrics():
+    cutoff = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=24)).isoformat()
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT outcome,http_status,latency_ms,payload FROM scans WHERE timestamp>=?",
+            (cutoff,),
+        ).fetchall()
+    latency = sorted(r["latency_ms"] for r in rows)
+    return {
+        "window_hours": 24,
+        "scans": len(rows),
+        "blocked": sum(r["outcome"] == "blocked" for r in rows),
+        "errors": sum(r["http_status"] >= 400 for r in rows),
+        "latency_p50_ms": latency[(len(latency) - 1) // 2] if latency else None,
+        "latency_p95_ms": (
+            latency[min(len(latency) - 1, int(len(latency) * 0.95))]
+            if latency
+            else None
+        ),
+        "note": "统计 Webhook 阶段；一次调用通常包含输入和输出两次检查。",
+    }
