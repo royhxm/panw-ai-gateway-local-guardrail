@@ -1,0 +1,7 @@
+fastapi==0.115.12
+uvicorn==0.34.2
+httpx==0.28.1
+transformers==4.57.1
+presidio-analyzer==2.2.360
+spacy==3.8.7
+

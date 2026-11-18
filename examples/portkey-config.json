@@ -1,0 +1,19 @@
+{
+  "before_request_hooks": [{
+    "id": "local-input-check", "type": "guardrail", "deny": true, "async": false,
+    "checks": [{"id": "default.webhook", "parameters": {
+      "webhookURL": "http://<private-webhook-host>:18080/webhook/portkey",
+      "headers": {"Authorization": "Bearer <WEBHOOK_TOKEN>", "Content-Type": "application/json"},
+      "timeout": 95000, "failOnError": true
+    }}]
+  }],
+  "after_request_hooks": [{
+    "id": "local-output-check", "type": "guardrail", "deny": true, "async": false,
+    "checks": [{"id": "default.webhook", "parameters": {
+      "webhookURL": "http://<private-webhook-host>:18080/webhook/portkey",
+      "headers": {"Authorization": "Bearer <WEBHOOK_TOKEN>", "Content-Type": "application/json"},
+      "timeout": 95000, "failOnError": true
+    }}]
+  }]
+}
+

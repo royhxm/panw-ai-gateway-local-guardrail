@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Local Guard · 扫描日志</title>
+    <link rel="stylesheet" href="/logs/static/style.css" />
+    <script src="/logs/static/app.js" defer></script>
+  </head>
+  <body>
+    <header>
+      <a class="brand" href="/logs" aria-label="Local Guard"
+        ><span class="mark">L<span>G</span></span
+        ><span>LOCAL<span class="muted"> / </span>GUARD</span></a
+      ><span class="divider"></span>
+      <div class="heading">
+        <h1>Webhook 扫描日志</h1>
+        <span>Qwen3Guard + Presidio</span>
+      </div>
+      <div class="header-right">
+        <span class="live-dot"></span><span id="connection">内网日志控制台</span
+        ><button id="logout" class="quiet hidden">退出</button>
+      </div>
+    </header>
+    <main>
+      <section id="login" class="login-card">
+        <div class="eyebrow">PRIVATE OBSERVABILITY</div>
+        <h2>每一次检测，都有记录。</h2>
+        <p>
+          查看安全判定、PII 命中与请求耗时。<br />输入独立的日志访问 Token
+          进入控制台。
+        </p>
+        <form id="login-form">
+          <label for="token">日志访问 Token</label
+          ><input
+            id="token"
+            type="password"
+            autocomplete="off"
+            required
+            placeholder="LOGS_TOKEN"
+          /><button type="submit" class="primary">
+            进入日志控制台 <span>→</span>
+          </button>
+          <p id="login-error" role="alert"></p>
+        </form>
+        <div class="login-note">
+          仅内网访问 · 会话 8 小时 · 检出的 PII 在摘要中遮盖
+        </div>
+      </section>
+      <section id="dashboard" class="hidden">
+        <div class="section-title">
+          <div>
+            <div class="eyebrow">REQUEST ACTIVITY</div>
+            <h2>检测活动</h2>
+          </div>
+          <div class="update">最近更新 <span id="updated">—</span></div>
+        </div>
+        <div class="toolbar">
+          <div class="field">
+            <label for="limit">显示</label
+            ><select id="limit">
+              <option>25</option>
+              <option>50</option>
+              <option selected>100</option>
+              <option>250</option>
+              <option>500</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="outcome">结果</label
+            ><select id="outcome">
+              <option value="all">全部结果</option>
+              <option value="blocked">已阻断</option>
+              <option value="allowed">已放行</option>
+              <option value="error">检测异常</option>
+              <option value="rejected">请求拒绝</option>
+            </select>
+          </div>
+          <div class="search">
+            <span>⌕</span
+            ><input
+              id="search"
+              type="search"
+              placeholder="搜索请求摘要、分类、Trace ID、模型…"
+              aria-label="搜索日志"
+              maxlength="200"
+            />
+          </div>
+          <button id="refresh">↻ <span>刷新</span></button
+          ><label class="auto"
+            ><input id="auto" type="checkbox" checked /> 自动刷新
+            <span>10 s</span></label
+          ><select id="timezone" aria-label="日志时区">
+            <option value="Asia/Singapore">SGT · UTC+8</option>
+            <option value="UTC">UTC</option>
+          </select>
+        </div>
+        <div class="stats">
+          <article>
+            <span>匹配请求</span><strong id="total">0</strong
+            ><small>REQUESTS</small>
+          </article>
+          <article class="blocked">
+            <span>已阻断</span><strong id="blocked">0</strong
+            ><small>BLOCKED</small>
+          </article>
+          <article class="allowed">
+            <span>已放行</span><strong id="allowed">0</strong
+            ><small>ALLOWED</small>
+          </article>
+          <article class="pii">
+            <span>PII 命中请求</span><strong id="pii">0</strong
+            ><small>PII DETECTED</small>
+          </article>
+          <article class="errors">
+            <span>异常 / 拒绝</span><strong id="errors">0</strong
+            ><small>ERROR / REJECTED</small>
+          </article>
+        </div>
+        <div class="table-heading">
+          <h3>请求明细 <span id="range"></span></h3>
+          <span class="table-note">时间倒序 · 点击任意记录查看详情</span>
+        </div>
+        <div id="error" class="error hidden" role="alert"></div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th id="time-heading">时间 (SGT)</th>
+                <th>结果 / HTTP</th>
+                <th>安全判定</th>
+                <th>PII 命中</th>
+                <th>
+                  本轮输入 / 检查内容
+                  <span class="subtle">检出 PII 已遮盖</span>
+                </th>
+                <th>网关请求模型</th>
+                <th class="right">耗时</th>
+                <th><span class="sr-only">详情</span></th>
+              </tr>
+            </thead>
+            <tbody id="rows"></tbody>
+          </table>
+          <div id="empty" class="empty hidden">
+            <span>⌕</span>
+            <h3>暂无匹配的扫描记录</h3>
+            <p>调整筛选条件，或通过 Webhook 发起一次检测。</p>
+          </div>
+        </div>
+        <footer>
+          <span>保留最近 30 天 · 最多 10,000 条 · 从启用日志时开始记录</span>
+          <div class="pagination">
+            <button id="prev">← 上一页</button><span id="page">1 / 1</span
+            ><button id="next">下一页 →</button>
+          </div>
+        </footer>
+        <p class="policy-note">
+          <span class="live-dot"></span>当前策略：PII、Unsafe、Controversial
+          均阻断。页面显示 Webhook 实际状态码；网关最终结果以 SCM 策略为准。
+        </p>
+      </section>
+    </main>
+    <dialog id="details">
+      <div class="dialog-top">
+        <div>
+          <div class="eyebrow">REQUEST DETAIL</div>
+          <h2>扫描详情 <span id="detail-id"></span></h2>
+        </div>
+        <button id="close-details" aria-label="关闭详情">✕</button>
+      </div>
+      <div id="detail-meta" class="detail-meta"></div>
+      <div id="detail-body"></div>
+      <details class="raw-details">
+        <summary>完整检测记录 · JSON</summary>
+        <pre id="detail-json"></pre>
+      </details>
+    </dialog>
+  </body>
+</html>

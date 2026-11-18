@@ -1,0 +1,20 @@
+{
+  "eventType": "afterRequestHook",
+  "provider": "example-provider",
+  "requestType": "chatComplete",
+  "metadata": {"trace_id": "example-trace-001", "feature": "chat"},
+  "request": {
+    "json": {"model": "example-chat-model", "stream": false, "messages": [{"role": "user", "content": "请介绍杭州西湖的风景。"}]},
+    "isTransformed": false
+  },
+  "response": {
+    "json": {
+      "model": "example-chat-model",
+      "choices": [{"index": 0, "message": {"role": "assistant", "content": "西湖位于杭州，适合步行欣赏湖景。"}, "finish_reason": "stop"}]
+    },
+    "text": "西湖位于杭州，适合步行欣赏湖景。",
+    "statusCode": 200,
+    "isTransformed": false
+  }
+}
+

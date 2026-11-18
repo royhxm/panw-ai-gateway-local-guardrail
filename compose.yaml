@@ -1,0 +1,95 @@
+name: local-guardrail
+x-runtime: &runtime
+  image: ${GUARDRAIL_IMAGE:-local-guardrail:0.1.0}
+  network_mode: host
+  restart: unless-stopped
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  logging:
+    driver: json-file
+    options: { max-size: "10m", max-file: "3" }
+services:
+  qwen3guard:
+    <<: *runtime
+    build: { context: ., network: host }
+    command:
+      [
+        sh,
+        -c,
+        'exec uvicorn model:app --host 127.0.0.1 --port "$${QWEN_PORT}" --no-access-log',
+      ]
+    environment:
+      QWEN_PORT: ${QWEN_PORT:-18081}
+      CPU_THREADS: ${CPU_THREADS:-4}
+      HF_HOME: /cache
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+      OMP_NUM_THREADS: ${CPU_THREADS:-4}
+    volumes: ["${MODEL_CACHE_DIR:-./model-cache}:/cache:ro"]
+    mem_limit: 5g
+    healthcheck:
+      test:
+        [
+          CMD,
+          python,
+          -c,
+          'import os,urllib.request; urllib.request.urlopen("http://127.0.0.1:"+os.environ["QWEN_PORT"]+"/health",timeout=4)',
+        ]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 120s
+  presidio:
+    <<: *runtime
+    command:
+      [
+        sh,
+        -c,
+        'exec uvicorn pii:app --host 127.0.0.1 --port "$${PRESIDIO_PORT}" --no-access-log',
+      ]
+    environment:
+      PRESIDIO_PORT: ${PRESIDIO_PORT:-18082}
+    mem_limit: 1g
+    healthcheck:
+      test:
+        [
+          CMD,
+          python,
+          -c,
+          'import os,urllib.request; urllib.request.urlopen("http://127.0.0.1:"+os.environ["PRESIDIO_PORT"]+"/health",timeout=4)',
+        ]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+  webhook:
+    <<: *runtime
+    command:
+      [
+        sh,
+        -c,
+        'exec uvicorn webhook:app --host "$${WEBHOOK_BIND_HOST}" --port "$${WEBHOOK_PORT}" --no-access-log',
+      ]
+    environment:
+      WEBHOOK_TOKEN: ${WEBHOOK_TOKEN:?Run python3 scripts/setup.py first}
+      LOGS_TOKEN: ${LOGS_TOKEN:?Run python3 scripts/setup.py first}
+      WEBHOOK_BIND_HOST: ${WEBHOOK_BIND_HOST:-127.0.0.1}
+      WEBHOOK_PORT: ${WEBHOOK_PORT:-18080}
+      QWEN_URL: http://127.0.0.1:${QWEN_PORT:-18081}
+      PRESIDIO_URL: http://127.0.0.1:${PRESIDIO_PORT:-18082}
+      AUDIT_DB: /data/scans.sqlite3
+    volumes: ["${LOGS_DATA_DIR:-./logs-data}:/data"]
+    depends_on:
+      qwen3guard: { condition: service_healthy }
+      presidio: { condition: service_healthy }
+    mem_limit: 512m
+    healthcheck:
+      test:
+        [
+          CMD,
+          python,
+          -c,
+          'import os,urllib.request; host=os.environ["WEBHOOK_BIND_HOST"]; host="127.0.0.1" if host=="0.0.0.0" else "[::1]" if host=="::" else "["+host+"]" if ":" in host else host; urllib.request.urlopen("http://"+host+":"+os.environ["WEBHOOK_PORT"]+"/health",timeout=8)',
+        ]
+      interval: 20s
+      timeout: 10s
+      retries: 3
