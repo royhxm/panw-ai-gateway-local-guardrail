@@ -2,6 +2,12 @@
 
 版本遵循 Semantic Versioning。这里记录项目能力，不包含私有部署的地址、Token、日志或业务数据。
 
+## [0.2.1] - 2026-11-18
+
+- Allow explicitly successful, structurally valid Chat Completion responses with no text; mark output scanning skipped, never Safe.
+- Preserve input checks, all non-empty output checks, and rejection of errors, malformed responses and unsupported message fields.
+- Show no-text skip reason in list/detail views and preserve usage, Trace IDs and masked snapshots.
+
 ## [0.2.0] - 2026-11-18
 
 - Separate gateway/application Trace IDs, preserve session identity, avoid automatic pairing when retries create multiple candidates.

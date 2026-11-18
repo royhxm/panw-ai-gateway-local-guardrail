@@ -11,7 +11,7 @@
 - WEBHOOK_TOKEN / LOGS_TOKEN：至少 32 字符的两个独立随机值。
 - MODEL_CACHE_DIR：默认 `./model-cache`，容器只读挂载；模型位于其中的 `model/`。
 - LOGS_DATA_DIR：默认 `./logs-data`，容器 UID 10001 可写。
-- GUARDRAIL_IMAGE：发布镜像的本地构建标签，初始为 local-guardrail:0.2.0。
+- GUARDRAIL_IMAGE：发布镜像的本地构建标签，初始为 local-guardrail:0.2.1。
 - CPU_THREADS：默认 4，按主机 CPU 和其他工作负载配置。
 
 变更自定义数据目录后，初始化脚本不会自动接管任意目录。请手动创建正确路径并验证

@@ -3,7 +3,7 @@
 **在自己的 Linux 主机运行 Qwen3Guard + Microsoft Presidio，并通过 Webhook 为 AI Gateway 增加内容检查与中文 PII 检测。**
 
 ![CI](https://github.com/royhxm/panw-ai-gateway-local-guardrail/actions/workflows/ci.yml/badge.svg)
-![Version](https://img.shields.io/badge/version-0.2.0-orange)
+![Version](https://img.shields.io/badge/version-0.2.1-orange)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
 [English](docs/README.en.md) · [SCM / Portkey 配置](docs/gateway-integration.md) · [API](docs/api.md) · [运维](docs/operations.md) · [限制与安全](docs/limitations.md) · [版本说明](CHANGELOG.md)
@@ -59,7 +59,7 @@ Docker 的官方安装说明见 [Docker Engine on Ubuntu](https://docs.docker.co
 ```bash
 git clone https://github.com/royhxm/panw-ai-gateway-local-guardrail.git
 cd panw-ai-gateway-local-guardrail
-git checkout v0.2.0
+git checkout v0.2.1
 
 # 生成 .env；已存在时保留，不覆盖凭据
 python3 scripts/setup.py
@@ -175,7 +175,7 @@ pytest
 应用代码使用 MIT；第三方模型和组件遵循各自许可证，见 [NOTICE](NOTICE.md)。仓库不包含模型权重、业务凭据、真实用户日志或 PANW 网关镜像。
 
 
-## 输出安全与日志关联（v0.2.0）
+## 输出安全与日志关联（v0.2.1）
 
 详见 [输出控制、PII 策略、Trace 关联和监控](docs/output-control.md)。保持 Aurora → PANW AI Gateway → 模型的架构，由网关调用 Webhook 检测。
 

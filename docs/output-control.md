@@ -51,7 +51,7 @@ SCM Forward Headers 可填 `x-portkey-trace-id`，不要在固定 Headers 中填
 
 现在空/无正文 JSON 会尝试外层 text；畸形 messages/choices、多模态等仍拒绝。
 解析失败会保存具体错误与脱敏快照；脱敏依赖失败时只保存失败标记，不回退保存原文。
-空输出默认拒绝，避免把“没有可扫描内容”误标为安全。
+v0.2.1：只有显式成功的 HTTP 2xx、结构有效的 chat.completion、所有 assistant 消息均无正文且 finish_reason 为 stop/length 时，允许返回并标记 skipped_no_text；不执行模型分类，也不标记 Safe。未知状态、错误、缺少 choices、工具调用、多模态或其他消息字段仍拒绝。无需按 ping 或 max_tokens 设置豁免；有任何正文仍正常检查。
 历史日志的原文无法恢复。
 
 ## 运行指标和验收

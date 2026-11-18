@@ -73,9 +73,11 @@ function render() {
       el(
         "span",
         "label",
-        item.safety_label === "Skipped"
-          ? "模型跳过 · PII 优先"
-          : item.safety_label || "未完成检测",
+        item.categories === "NoText"
+          ? "无正文 · 扫描跳过"
+          : item.safety_label === "Skipped"
+            ? "模型跳过 · PII 优先"
+            : item.safety_label || "未完成检测",
       ),
     );
     for (const cat of (item.categories || "").split(/,\s*/).filter(Boolean))
@@ -201,11 +203,13 @@ function guardCard(parent, record, phase) {
   detailRow(
     card,
     "Qwen3Guard",
-    (record.safety_label === "Skipped"
-      ? "未执行 · PII 优先阻断"
-      : (record.safety_label || "未完成") +
-        " / " +
-        (record.categories || "未提供分类")) +
+    (record.categories === "NoText"
+      ? "未执行 · 上游成功且无正文"
+      : record.safety_label === "Skipped"
+        ? "未执行 · PII 优先阻断"
+        : (record.safety_label || "未完成") +
+          " / " +
+          (record.categories || "未提供分类")) +
       (t.qwen_request_ms !== undefined
         ? " · " + t.qwen_request_ms + " ms"
         : ""),
@@ -216,9 +220,11 @@ function guardCard(parent, record, phase) {
   detailRow(
     card,
     "Presidio PII",
-    (Object.entries(counts)
-      .map(([k, n]) => k + " ×" + n)
-      .join(" · ") || "未检出") +
+    (record.categories === "NoText"
+      ? "未执行（无正文）"
+      : Object.entries(counts)
+          .map(([k, n]) => k + " ×" + n)
+          .join(" · ") || "未检出") +
       (t.presidio_ms !== undefined ? " · " + t.presidio_ms + " ms" : ""),
   );
   detailRow(

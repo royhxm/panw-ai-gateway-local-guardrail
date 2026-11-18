@@ -9,7 +9,7 @@ import observation
 
 QWEN_URL = os.environ.get("QWEN_URL", "http://127.0.0.1:18081").rstrip("/")
 PRESIDIO_URL = os.environ.get("PRESIDIO_URL", "http://127.0.0.1:18082").rstrip("/")
-VERSION = "0.2.0"
+VERSION = "0.2.1"
 app = FastAPI(
     title="PANW AI Gateway Local Guardrail",
     version=VERSION,
@@ -89,6 +89,53 @@ def extract(part):
         if key in part and part[key] is not None:
             return text_content(part[key])
     raise HTTPException(422, "no supported text found")
+
+
+def successful_empty_response(response):
+    """Only an explicitly successful text completion can bypass text scanning."""
+    if (
+        not isinstance(response, dict)
+        or type(response.get("statusCode")) is not int
+        or not 200 <= response["statusCode"] < 300
+    ):
+        return False
+    if (
+        not isinstance(response.get("text", ""), str)
+        or response.get("text", "").strip()
+    ):
+        return False
+    obj = response.get("json")
+    if (
+        not isinstance(obj, dict)
+        or obj.get("object") != "chat.completion"
+        or obj.get("error")
+    ):
+        return False
+    base = obj.get("base_resp")
+    if base is not None and (
+        not isinstance(base, dict) or base.get("status_code") != 0
+    ):
+        return False
+    choices = obj.get("choices")
+    if not isinstance(choices, list) or not choices:
+        return False
+    for choice in choices:
+        if not isinstance(choice, dict) or choice.get("finish_reason") not in (
+            "stop",
+            "length",
+        ):
+            return False
+        if choice.get("logprobs"):
+            return False
+        message = choice.get("message")
+        if not isinstance(message, dict) or message.get("role") != "assistant":
+            return False
+        if set(message) - {"role", "content"}:
+            return False
+        content = message.get("content")
+        if content is not None and (not isinstance(content, str) or content.strip()):
+            return False
+    return True
 
 
 def safe_id(value):
@@ -184,6 +231,57 @@ async def webhook(request: Request):
         upstream_status = body["response"].get("statusCode")
         if type(upstream_status) is int and upstream_status >= 400:
             raise HTTPException(422, "upstream response was not successful")
+    if after and successful_empty_response(body.get("response")):
+        payload.update(
+            verdict=True,
+            safety={"label": "Skipped", "categories": "NoText"},
+            scan_status="skipped_no_text",
+            skip_reason="successful_response_without_text",
+            forward_decision="allow_return",
+            content={"response": ""},
+            guard_input={
+                "source": "local_model_request",
+                "executed": False,
+                "messages": [],
+                "note": "上游成功且无正文；没有内容可扫描，未执行安全分类。",
+            },
+        )
+        usage = body["response"]["json"].get("usage", {})
+        if isinstance(usage, dict):
+            payload["usage"] = {
+                k: v
+                for k, v in usage.items()
+                if k in ("prompt_tokens", "completion_tokens", "total_tokens")
+                and type(v) is int
+                and 0 <= v <= 1000000000
+            }
+        started = time.monotonic()
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                payload["observation"] = await observation.snapshot(body, client)
+        except Exception:
+            payload["observation"] = {"capture_error": "脱敏采集不可用；未保存原文"}
+        finally:
+            payload["timing"]["snapshot_masking_ms"] = round(
+                (time.monotonic() - started) * 1000, 2
+            )
+        request.state.audit.update(
+            outcome="allowed",
+            safety_label="Skipped",
+            categories="NoText",
+            summary="[上游成功，无正文；输出扫描跳过]",
+        )
+        return {
+            "verdict": True,
+            "data": {
+                "action": "allow",
+                "eventType": event,
+                "pii": [],
+                "safety": payload["safety"],
+                "scan_status": "skipped_no_text",
+                "reason": "successful_response_without_text",
+            },
+        }
     text = extract(body.get("response") if after else body.get("request", body))
     if not text.strip():
         raise HTTPException(422, "empty content")
